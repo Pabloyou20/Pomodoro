@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important} body{margin:0}</style>
+<title>Pomodoro de estudio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: instrumento compacto para incrustar — esfera a la izquierda, mandos a la derecha; se apila en móvil */
+:root {
+  --bg: #F3F6F7;
+  --surface: #FFFFFF;
+  --ink: #15212A;
+  --muted: #5B6973;
+  --line: #D8E0E4;
+  --track: #E2E8EB;
+  --focus: #2C5E8A;
+  --rest: #367556;
+  --long: #6B5391;
+  --accent: var(--focus);
+  --on-accent: #FFFFFF;
+  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171B; --surface: #172027; --ink: #E4EBEE; --muted: #95A4AD; --line: #26323A; --track: #222C33;
+    --focus: #7DB1DE; --rest: #78C39B; --long: #B39BDA; --on-accent: #0E1418;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171B; --surface: #172027; --ink: #E4EBEE; --muted: #95A4AD; --line: #26323A; --track: #222C33;
+  --focus: #7DB1DE; --rest: #78C39B; --long: #B39BDA; --on-accent: #0E1418;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+*, *::before, *::after { box-sizing: border-box; }
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+}
+.app[data-phase="focus"] { --accent: var(--focus); }
+.app[data-phase="break"] { --accent: var(--rest); }
+.app[data-phase="long"]  { --accent: var(--long); }
+
+/* Esfera */
+.dial { position: relative; width: 100%; max-width: 240px; aspect-ratio: 1; justify-self: center; }
+.dial svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); }
+.dial .track { fill: none; stroke: var(--track); stroke-width: 10; }
+.dial .ticks line { stroke: var(--line); stroke-width: 2; }
+.dial .prog {
+  fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round;
+  transition: stroke-dashoffset 0.3s linear, stroke 0.4s ease;
+}
+.readout {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  text-align: center;
+}
+.phase {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent);
+}
+.time {
+  font-family: var(--font-num); font-weight: 500;
+  font-size: clamp(40px, 11vw, 52px); line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
+.next { font-size: 12px; color: var(--muted); }
+
+/* Mandos */
+.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+.presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.preset {
+  flex: 1 1 88px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.preset .mins { font-family: var(--font-num); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.preset .name { font-size: 11px; color: var(--muted); }
+.preset[aria-checked="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.preset[aria-checked="true"] .name { color: var(--accent); }
+
+.custom { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.custom label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.custom input {
+  width: 84px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--ink);
+  font-family: var(--font-num); font-size: 14px;
+}
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  padding: 10px 16px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: inherit; font-weight: 500; cursor: pointer;
+}
+.btn.primary {
+  flex: 1 1 140px;
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+  font-weight: 600;
+}
+.btn:hover { filter: brightness(0.97); }
+
+.cycle { display: flex; align-items: center; gap: 10px; }
+.dots { display: flex; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); }
+.dot.done { background: var(--focus); border-color: var(--focus); }
+.cycle-text { font-size: 12px; color: var(--muted); }
+
+.opts { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.opts label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.opts input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.stats {
+  display: flex; flex-wrap: wrap; gap: 4px 16px;
+  padding-top: 12px; border-top: 1px solid var(--line);
+  font-size: 13px; color: var(--muted);
+}
+.stats b { color: var(--ink); font-family: var(--font-num); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .app { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .dial { max-width: 220px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dial .prog { transition: none; }
+}
+</style>
+</head>
+<body>
+
+
+<main class="app" id="app" data-phase="focus">
+  <section class="dial" aria-live="polite">
+    <svg viewBox="0 0 200 200" aria-hidden="true">
+      <g class="ticks" id="ticks"></g>
+      <circle class="track" cx="100" cy="100" r="86"></circle>
+      <circle class="prog" id="prog" cx="100" cy="100" r="86"></circle>
+    </svg>
+    <div class="readout">
+      <div class="phase" id="phase">Foco</div>
+      <div class="time" id="time">50:00</div>
+      <div class="next" id="next">Después: descanso de 10 min</div>
+    </div>
+  </section>
+
+  <section class="side">
+    <div>
+      <div class="label" id="preset-label">Modo</div>
+      <div class="presets" id="presets" role="radiogroup" aria-labelledby="preset-label"></div>
+    </div>
+
+    <div class="custom" id="custom" hidden>
+      <label for="custom-focus">Foco (min)
+        <input id="custom-focus" type="number" min="1" max="180" step="1" value="40">
+      </label>
+      <label for="custom-break">Descanso (min)
+        <input id="custom-break" type="number" min="1" max="60" step="1" value="8">
+      </label>
+    </div>
+
+    <div class="controls">
+      <button class="btn primary" id="toggle" type="button">Empezar</button>
+      <button class="btn" id="skip" type="button" title="Pasar a la siguiente fase (S)">Saltar</button>
+      <button class="btn" id="reset" type="button" title="Volver a empezar esta fase (R)">Reiniciar</button>
+    </div>
+
+    <div class="cycle">
+      <div class="dots" id="dots" aria-hidden="true"></div>
+      <div class="cycle-text" id="cycle-text">Bloque 1 de 4 · descanso largo al completar 4</div>
+    </div>
+
+    <div class="opts">
+      <label for="opt-chain"><input id="opt-chain" type="checkbox"> Encadenar fases</label>
+      <label for="opt-sound"><input id="opt-sound" type="checkbox" checked> Sonido al terminar</label>
+    </div>
+
+    <div class="stats" id="stats">
+      <span>Hoy: <b id="stat-blocks">0</b> bloques</span>
+      <span><b id="stat-min">0</b> min de foco</span>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var PRESETS = [
+    { key: 'clasico',  name: 'Clásico',      focus: 25, brk: 5,  long: 15 },
+    { key: 'bloque',   name: 'Tu bloque',    focus: 50, brk: 10, long: 30 },
+    { key: 'profundo', name: 'Profundo',     focus: 90, brk: 20, long: 30 },
+    { key: 'arranque', name: 'Arranque',     focus: 15, brk: 3,  long: 10 },
+    { key: 'custom',   name: 'Personalizado', focus: 40, brk: 8, long: 20 }
+  ];
+  var LABELS = { focus: 'Foco', 'break': 'Descanso', 'long': 'Descanso largo' };
+  var CIRC = 2 * Math.PI * 86;
+
+  function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function load(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
+  function today() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+
+  var saved = load('pomo-settings', {});
+  var state = {
+    preset: saved.preset || 'bloque',
+    customFocus: saved.customFocus || 40,
+    customBreak: saved.customBreak || 8,
+    chain: !!saved.chain,
+    sound: saved.sound !== false,
+    phase: 'focus',
+    done: 0,
+    running: false,
+    endAt: 0,
+    remaining: 0
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var app = $('app'), prog = $('prog');
+  prog.style.strokeDasharray = CIRC;
+
+  // Marcas de la esfera: 12 divisiones
+  (function () {
+    var g = $('ticks'), s = '';
+    for (var i = 0; i < 12; i++) {
+      var a = (i / 12) * 2 * Math.PI, r1 = 97, r2 = 93;
+      s += '<line x1="' + (100 + r1 * Math.cos(a)).toFixed(2) + '" y1="' + (100 + r1 * Math.sin(a)).toFixed(2) +
+           '" x2="' + (100 + r2 * Math.cos(a)).toFixed(2) + '" y2="' + (100 + r2 * Math.sin(a)).toFixed(2) + '"></line>';
+    }
+    g.innerHTML = s;
+  })();
+
+  function preset() {
+    var p = PRESETS.find(function (x) { return x.key === state.preset; }) || PRESETS[1];
+    if (p.key === 'custom') {
+      var f = clamp(state.customFocus, 1, 180), b = clamp(state.customBreak, 1, 60);
+      return { key: 'custom', name: p.name, focus: f, brk: b, long: Math.min(30, b * 3) };
+    }
+    return p;
+  }
+  function clamp(n, lo, hi) { n = Math.round(Number(n)); if (!isFinite(n)) n = lo; return Math.max(lo, Math.min(hi, n)); }
+  function minutesFor(phase) { var p = preset(); return phase === 'focus' ? p.focus : phase === 'break' ? p.brk : p.long; }
+  function duration(phase) { return minutesFor(phase) * 60000; }
+  function nextPhase() {
+    if (state.phase !== 'focus') return 'focus';
+    return ((state.done + 1) % 4 === 0) ? 'long' : 'break';
+  }
+  function fmt(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000)), m = Math.floor(s / 60), r = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+  }
+  function saveSettings() {
+    store('pomo-settings', { preset: state.preset, customFocus: state.customFocus, customBreak: state.customBreak, chain: state.chain, sound: state.sound });
+  }
+
+  // Estadísticas del día
+  function stats() { var s = load('pomo-stats', null); if (!s || s.date !== today()) s = { date: today(), blocks: 0, minutes: 0 }; return s; }
+  function addStats(min) { var s = stats(); s.blocks += 1; s.minutes += min; store('pomo-stats', s); }
+
+  // Sonido
+  var ctx = null;
+  function ensureAudio() {
+    if (ctx) return;
+    try { var AC = window.AudioContext || window.webkitAudioContext; if (AC) ctx = new AC(); } catch (e) { ctx = null; }
+  }
+  function chime() {
+    if (!state.sound || !ctx) return;
+    try {
+      if (ctx.state === 'suspended') ctx.resume();
+      [0, 0.28, 0.56].forEach(function (t, i) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = [660, 880, 990][i];
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.6);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.65);
+      });
+    } catch (e) {}
+  }
+
+  // Mantener la pantalla encendida mientras corre (si el navegador lo permite)
+  var lock = null;
+  function holdScreen(on) {
+    try {
+      if (on && navigator.wakeLock && !lock) navigator.wakeLock.request('screen').then(function (l) { lock = l; }).catch(function () {});
+      if (!on && lock) { lock.release().catch(function () {}); lock = null; }
+    } catch (e) {}
+  }
+
+  function setPhase(phase) {
+    state.phase = phase;
+    state.remaining = duration(phase);
+    if (state.running) state.endAt = Date.now() + state.remaining;
+  }
+
+  function complete() {
+    chime();
+    if (state.phase === 'focus') { state.done += 1; addStats(minutesFor('focus')); }
+    var np = state.phase === 'focus' ? (state.done % 4 === 0 ? 'long' : 'break') : 'focus';
+    state.running = state.chain;
+    setPhase(np);
+    if (!state.running) holdScreen(false);
+    render();
+  }
+
+  function tick() {
+    if (state.running) {
+      state.remaining = state.endAt - Date.now();
+      if (state.remaining <= 0) { complete(); return; }
+    }
+    paintTime();
+  }
+
+  function paintTime() {
+    var total = duration(state.phase);
+    var frac = Math.min(1, Math.max(0, 1 - state.remaining / total));
+    prog.style.strokeDashoffset = (CIRC * (1 - frac)).toFixed(2);
+    $('time').textContent = fmt(state.remaining);
+    document.title = state.running ? fmt(state.remaining) + ' · ' + LABELS[state.phase] : 'Pomodoro de estudio';
+  }
+
+  function render() {
+    app.dataset.phase = state.phase;
+    $('phase').textContent = LABELS[state.phase];
+    var np = nextPhase();
+    $('next').textContent = 'Después: ' + (np === 'focus' ? 'foco de ' : np === 'long' ? 'descanso largo de ' : 'descanso de ') + minutesFor(np) + ' min';
+    $('toggle').textContent = state.running ? 'Pausar' : (state.remaining < duration(state.phase) ? 'Seguir' : 'Empezar');
+
+    var inSet = state.done % 4;
+    var dots = '';
+    for (var i = 0; i < 4; i++) dots += '<span class="dot' + (i < inSet ? ' done' : '') + '"></span>';
+    $('dots').innerHTML = dots;
+    $('cycle-text').textContent = state.phase === 'long'
+      ? 'Ciclo completo · toca descanso largo'
+      : 'Bloque ' + (inSet + 1) + ' de 4 · descanso largo al completar 4';
+
+    var html = '';
+    PRESETS.forEach(function (p) {
+      var f = p.key === 'custom' ? clamp(state.customFocus, 1, 180) : p.focus;
+      var b = p.key === 'custom' ? clamp(state.customBreak, 1, 60) : p.brk;
+      html += '<button type="button" class="preset" role="radio" aria-checked="' + (state.preset === p.key) + '" data-key="' + p.key + '">' +
+        '<span class="mins">' + f + '/' + b + '</span>' +
+        '<span class="name">' + p.name + '</span></button>';
+    });
+    $('presets').innerHTML = html;
+    $('custom').hidden = state.preset !== 'custom';
+    $('custom-focus').value = state.customFocus;
+    $('custom-break').value = state.customBreak;
+    $('opt-chain').checked = state.chain;
+    $('opt-sound').checked = state.sound;
+
+    var s = stats();
+    $('stat-blocks').textContent = s.blocks;
+    $('stat-min').textContent = s.minutes;
+    paintTime();
+  }
+
+  function toggle() {
+    ensureAudio();
+    if (state.running) {
+      state.remaining = state.endAt - Date.now();
+      state.running = false;
+      holdScreen(false);
+    } else {
+      state.running = true;
+      state.endAt = Date.now() + state.remaining;
+      holdScreen(true);
+    }
+    render();
+  }
+  function skip() {
+    var np = nextPhase();
+    setPhase(np);
+    render();
+  }
+  function resetPhase() {
+    state.running = false;
+    holdScreen(false);
+    setPhase(state.phase);
+    render();
+  }
+  function choosePreset(key) {
+    state.preset = key;
+    state.running = false;
+    holdScreen(false);
+    state.done = 0;
+    setPhase('focus');
+    saveSettings();
+    render();
+  }
+
+  $('toggle').addEventListener('click', toggle);
+  $('skip').addEventListener('click', skip);
+  $('reset').addEventListener('click', resetPhase);
+  $('presets').addEventListener('click', function (e) {
+    var b = e.target.closest('.preset'); if (b) choosePreset(b.dataset.key);
+  });
+  $('custom-focus').addEventListener('change', function (e) {
+    state.customFocus = clamp(e.target.value, 1, 180); saveSettings();
+    if (!state.running) setPhase(state.phase); render();
+  });
+  $('custom-break').addEventListener('change', function (e) {
+    state.customBreak = clamp(e.target.value, 1, 60); saveSettings();
+    if (!state.running) setPhase(state.phase); render();
+  });
+  $('opt-chain').addEventListener('change', function (e) { state.chain = e.target.checked; saveSettings(); });
+  $('opt-sound').addEventListener('change', function (e) { state.sound = e.target.checked; if (state.sound) ensureAudio(); saveSettings(); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) {
+      if (e.code === 'Space' && e.target.tagName === 'BUTTON') return;
+      if (e.target.tagName === 'INPUT') return;
+    }
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'r' || e.key === 'R') resetPhase();
+    else if (e.key === 's' || e.key === 'S') skip();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && state.running && lock === null) holdScreen(true);
+    tick();
+  });
+
+  setPhase('focus');
+  render();
+  setInterval(tick, 250);
+})();
+</script>
+
+</body>
+</html>
